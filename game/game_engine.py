@@ -9,6 +9,9 @@ BLACK = (0, 0, 0)
 
 class GameEngine:
     def __init__(self, width, height):
+        # Initialize mixer for sound
+        pygame.mixer.init()
+
         self.width = width
         self.height = height
         self.paddle_width = 10
@@ -21,8 +24,23 @@ class GameEngine:
         self.player_score = 0
         self.ai_score = 0
         self.font = pygame.font.SysFont("Arial", 30)
+        self.winning_score = 5  # default
 
-        self.winning_score = 5  # default (best of 9 → first to 5)
+        # --- Load sound effects ---
+        try:
+            self.sound_paddle = pygame.mixer.Sound("assets/paddle_hit.wav")
+            self.sound_wall = pygame.mixer.Sound("assets/wall_bounce.wav")
+            self.sound_score = pygame.mixer.Sound("assets/score.wav")
+        except Exception as e:
+            print(f"⚠️ Sound files missing or path incorrect: {e}")
+            self.sound_paddle = None
+            self.sound_wall = None
+            self.sound_score = None
+
+    def play_sound(self, sound):
+        """Helper to safely play a sound if it exists."""
+        if sound:
+            sound.play()
 
     def handle_input(self):
         keys = pygame.key.get_pressed()
@@ -32,10 +50,17 @@ class GameEngine:
             self.player.move(10, self.height)
 
     def update(self):
+        prev_velocity_x = self.ball.velocity_x
+        prev_velocity_y = self.ball.velocity_y
+
         # Move the ball
         self.ball.move()
 
-        # --- Collision check immediately after moving ---
+        # Play sound if ball bounced off top/bottom wall
+        if self.ball.velocity_y != prev_velocity_y:
+            self.play_sound(self.sound_wall)
+
+        # --- Collision check after movement ---
         ball_rect = self.ball.rect()
         player_rect = self.player.rect()
         ai_rect = self.ai.rect()
@@ -43,18 +68,26 @@ class GameEngine:
         if ball_rect.colliderect(player_rect):
             self.ball.x = player_rect.right
             self.ball.velocity_x *= -1
+            self.play_sound(self.sound_paddle)
 
         elif ball_rect.colliderect(ai_rect):
             self.ball.x = ai_rect.left - self.ball.width
             self.ball.velocity_x *= -1
+            self.play_sound(self.sound_paddle)
 
         # Check for scoring
         if self.ball.x <= 0:
             self.ai_score += 1
+            self.play_sound(self.sound_score)
             self.ball.reset()
         elif self.ball.x >= self.width:
             self.player_score += 1
+            self.play_sound(self.sound_score)
             self.ball.reset()
+
+        # Play sound when direction changes due to paddle hit
+        if self.ball.velocity_x != prev_velocity_x:
+            self.play_sound(self.sound_paddle)
 
         # Move AI paddle
         self.ai.auto_track(self.ball, self.height)
@@ -74,7 +107,6 @@ class GameEngine:
         big_font = pygame.font.SysFont("Arial", 50)
         msg = big_font.render(winner, True, WHITE)
 
-        # --- Center the winner message perfectly ---
         msg_rect = msg.get_rect(center=(self.width // 2, self.height // 2 - 60))
         screen.blit(msg, msg_rect)
 
@@ -82,7 +114,6 @@ class GameEngine:
         sub = small_font.render("Press any key for replay options...", True, WHITE)
         sub_rect = sub.get_rect(center=(self.width // 2, self.height // 2 + 20))
         screen.blit(sub, sub_rect)
-
         pygame.display.flip()
 
         waiting = True
@@ -95,7 +126,6 @@ class GameEngine:
                     waiting = False
 
         self.show_replay_menu(screen)
-
 
     def show_replay_menu(self, screen):
         screen.fill(BLACK)
